@@ -1,4 +1,4 @@
-# Arnis Score
+# ArnisScore
 
 This repository contains the core project files. Due to large file size limitations, some folders (such as `venv`, `datasets`, and `models`) are **not included** in the GitHub repository. Please follow the instructions below to set up your environment and download the necessary resources.
 
