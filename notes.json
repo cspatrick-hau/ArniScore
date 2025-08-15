@@ -1,0 +1,25 @@
+{
+  "categories": [
+    {
+      "id": 0,
+      "name": "Blue Player"
+    },
+    {
+      "id": 1,
+      "name": "Blue Stick"
+    },
+    {
+      "id": 2,
+      "name": "Red Player"
+    },
+    {
+      "id": 3,
+      "name": "Red Stick"
+    }
+  ],
+  "info": {
+    "year": 2025,
+    "version": "1.0",
+    "contributor": "Label Studio"
+  }
+}

@@ -1,0 +1,9 @@
+train: C:\Users\saf\yolov11_custom_segmentation\Arnis_Score_Object_Detection\dataset\train\images
+val: C:\Users\saf\yolov11_custom_segmentation\Arnis_Score_Object_Detection\dataset\val\images
+
+nc: 4
+names: ["Blue Player", "Blue Stick", "Red Player", "Red Stick"]
+
+roboflow:
+  workspace: gnsoft
+  project: arnis_score
