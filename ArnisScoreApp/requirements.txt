@@ -1,0 +1,26 @@
+# Core ML / DL
+torch
+torchvision
+ultralytics
+
+# Deep learning models
+tensorflow
+keras
+
+# Computer vision
+opencv-python
+opencv-contrib-python
+
+# Math & array ops
+numpy
+scipy
+
+# GUI
+PyQt5
+
+# PDF export
+fpdf
+
+# Utils
+pillow
+matplotlib
