@@ -225,7 +225,7 @@ class Prediction:
         for red_stick, conf in red_sticks:
             for blue_player, _ in blue_players:
                 iou = self.calculate_iou(red_stick, blue_player)
-                if iou > 0.1 and self.last_hit != "Red":
+                if iou > 0.0 and self.last_hit != "Red":
                     body_part = self.classify_hit(blue_player, red_stick)
                     body_part = self.map_invalid_hit(body_part, blue_player)
                     valid = body_part not in self.INVALID_PARTS
@@ -697,3 +697,4 @@ class ArnisApp(QMainWindow):
                 ("Camera 3 Logs", self.logs_3),
             ]
         )
+
