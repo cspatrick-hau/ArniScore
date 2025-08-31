@@ -7,20 +7,23 @@ def list_cameras(max_devices=10):
     backends = [
         cv2.CAP_DSHOW,
         cv2.CAP_MSMF,
-        cv2.CAP_V4L2,
-        cv2.CAP_AVFOUNDATION,
         cv2.CAP_ANY
     ]
+    
     for i in range(max_devices):
         for backend in backends:
-            cap = cv2.VideoCapture(i, backend)
-            if cap.isOpened():
-                ret, _ = cap.read()
-                if ret:
-                    available.append(i)
+            try:
+                cap = cv2.VideoCapture(i, backend)
+                if cap.isOpened():
+                    ret, _ = cap.read()
+                    if ret:
+                        available.append(i)
+                        cap.release()
+                        break
                     cap.release()
-                    break
-                cap.release()
+            except:
+                continue
+                
     return available if available else [0]
 
 class CameraThread(QThread):
@@ -43,29 +46,45 @@ class CameraThread(QThread):
         self.mutex.lock()
         self.running = True
         self.mutex.unlock()
-        cap = cv2.VideoCapture(self.camera_index, cv2.CAP_DSHOW)
-        if not cap.isOpened():
+        
+        backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
+        cap = None
+        
+        for backend in backends:
+            try:
+                cap = cv2.VideoCapture(self.camera_index, backend)
+                if cap.isOpened():
+                    break
+            except:
+                continue
+        
+        if not cap or not cap.isOpened():
             print(f"Failed to open camera {self.camera_index}")
             return
+            
         try:
             while self.is_running():
                 ret, frame = cap.read()
                 if not ret:
                     print("Failed to read frame")
                     break
+                    
                 with QMutexLocker(self.mutex):
                     self.last_frame = frame.copy()
+                    
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                if self.detection_enabled:
-                    if self.use_prediction and self.prediction:
-                        try:
-                            processed_frame = self.prediction.process_frame(frame, self.camera_number)
-                            rgb_frame = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
-                        except Exception as e:
-                            print(f"Prediction error: {e}")
+                
+                if self.detection_enabled and self.use_prediction and self.prediction:
+                    try:
+                        processed_frame = self.prediction.process_frame(frame, self.camera_number)
+                        rgb_frame = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
+                    except Exception as e:
+                        print(f"Prediction error: {e}")
+                        
                 self.frame_signal.emit(rgb_frame)
         finally:
-            cap.release()
+            if cap:
+                cap.release()
             print(f"Camera {self.camera_index} stopped")
 
     def is_running(self):
@@ -79,6 +98,5 @@ class CameraThread(QThread):
         self.wait(500)
 
     def get_last_frame(self):
-        """Return the last processed frame (BGR)."""
         with QMutexLocker(self.mutex):
             return self.last_frame.copy() if hasattr(self, 'last_frame') and self.last_frame is not None else None
