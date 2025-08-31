@@ -21,7 +21,6 @@ A comprehensive project that leverages deep learning and computer vision to dete
 - [Installation & Setup](#-installation--setup)
 - [Usage](#-usage)
   - [Running the Desktop App](#running-the-desktop-app)
-  - [Training Models from Scratch](#training-models-from-scratch)
 - [Results & Comparison](#-results--comparison)
   - [Dataset Comparison](#dataset-comparison)
   - [Model Performance Comparison](#model-performance-comparison)
