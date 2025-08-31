@@ -147,6 +147,8 @@ class Prediction:
         self.last_hit = None
         self.confidence_threshold = 0.6
         self.log_callback = log_callback
+        from detection import ArnisStrikeDetector
+        self.detector = ArnisStrikeDetector()
 
     def calculate_iou(self, box1, box2):
         x1_inter = max(box1[0], box2[0])
@@ -220,52 +222,100 @@ class Prediction:
         scored_by_red = False
         body_part = ""
         valid = False
+        confidence = 0.0
 
-        # Red Stick hits Blue Player
-        for red_stick, conf in red_sticks:
-            for blue_player, _ in blue_players:
-                iou = self.calculate_iou(red_stick, blue_player)
-                if iou > 0.0 and self.last_hit != "Red":
-                    body_part = self.classify_hit(blue_player, red_stick)
-                    body_part = self.map_invalid_hit(body_part, blue_player)
-                    valid = body_part not in self.INVALID_PARTS
-                    if valid:
-                        self.scores["Red"] += 1
-                        scored_by_red = True
-                    self.winner = "Red" if valid else None
-                    self.last_hit = "Red"
-                    hit_registered = True
-                    break
-            if hit_registered:
-                break
+        cnn_lstm_action = "no_action"
+        cnn_lstm_confidence = 0.0
 
-        # Blue Stick hits Red Player
+        target_player = None
+        if red_players:
+            target_player = red_players[0][0]
+        elif blue_players:
+            target_player = blue_players[0][0]
+
+        if target_player is not None:
+            cnn_lstm_action, cnn_lstm_confidence = self.detector.detect_action(frame, target_player)
+    
+            if "head" in cnn_lstm_action:
+                body_part = "Head"
+                valid = True
+            elif "body" in cnn_lstm_action:
+                body_part = "Body"
+                valid = True
+            elif "leg" in cnn_lstm_action:
+                body_part = "Legs"
+                valid = True
+            elif "invalid" in cnn_lstm_action:
+                body_part = "Invalid"
+                valid = False
+    
+            confidence = cnn_lstm_confidence
+    
+            if red_sticks and cnn_lstm_action != "no_action":
+                scored_by_red = True
+                self.scores["Red"] += 1 if valid else 0
+                hit_registered = True
+            elif blue_sticks and cnn_lstm_action != "no_action":
+                scored_by_red = False
+                self.scores["Blue"] += 1 if valid else 0
+                hit_registered = True
+
         if not hit_registered:
-            for blue_stick, conf in blue_sticks:
-                for red_player, _ in red_players:
-                    iou = self.calculate_iou(blue_stick, red_player)
-                    if iou > 0.0 and self.last_hit != "Blue":
-                        body_part = self.classify_hit(red_player, blue_stick)
-                        body_part = self.map_invalid_hit(body_part, red_player)
-                        valid = body_part not in self.INVALID_PARTS
+            # Red Stick hits Blue Player
+            for red_stick, conf in red_sticks:
+                for blue_player, _ in blue_players:
+                    iou = self.calculate_iou(red_stick, blue_player)
+                    if iou > 0.0 and self.last_hit != "Red":
+                        body_part = self.classify_hit(blue_player, red_stick)
+                        body_part = self.map_invalid_hit(body_part, blue_player)
+                        valid = body_part not in self.INVALID_PARTS and body_part != "Invalid"
                         if valid:
-                            self.scores["Blue"] += 1
-                        self.winner = "Blue" if valid else None
-                        self.last_hit = "Blue"
+                            self.scores["Red"] += 1
+                            scored_by_red = True
+                        self.winner = "Red" if valid else None
+                        self.last_hit = "Red"
                         hit_registered = True
+                        confidence = conf * 100.0
                         break
                 if hit_registered:
                     break
 
+            # Blue Stick hits Red Player
+            if not hit_registered:
+                for blue_stick, conf in blue_sticks:
+                    for red_player, _ in red_players:
+                        iou = self.calculate_iou(blue_stick, red_player)
+                        if iou > 0.0 and self.last_hit != "Blue":
+                            body_part = self.classify_hit(red_player, blue_stick)
+                            body_part = self.map_invalid_hit(body_part, red_player)
+                            valid = body_part not in self.INVALID_PARTS and body_part != "Invalid"
+                            if valid:
+                                self.scores["Blue"] += 1
+                            self.winner = "Blue" if valid else None
+                            self.last_hit = "Blue"
+                            hit_registered = True
+                            confidence = conf * 100.0
+                            break
+                    if hit_registered:
+                        break
+
         if hit_registered and self.log_callback:
             self.log_callback(
                 valid,
-                conf * 100.0,
+                confidence,
                 f"{'Red' if scored_by_red else 'Blue'} - {body_part}",
                 camera_number
             )
+    
+            if cnn_lstm_action != "no_action":
+                timestamp = datetime.datetime.now().strftime("%H:%M:%S")
+                self.match_logs_window.add_log(
+                    timestamp, valid, confidence, body_part, camera_number
+                )
+        
         if not hit_registered:
             self.last_hit = None
+    
         return result.plot()
 
 # ---------------- ArnisApp GUI ----------------
@@ -285,6 +335,10 @@ class ArnisApp(QMainWindow):
         self.pending_event_1 = None
         self.pending_event_2 = None
         self.pending_event_3 = None
+    
+        self.cnn_lstm_timer = QTimer()
+        self.cnn_lstm_timer.timeout.connect(self.process_cnn_lstm_detection)
+        self.cnn_lstm_interval = 100
         # Cameras
         self.cameras = list_cameras() or [0]
         self.camera_thread_1 = None
@@ -461,6 +515,15 @@ class ArnisApp(QMainWindow):
     # --------- CNN+LSTM Match Logs Controls ---------
     def open_match_logs(self):
         self.match_logs_window.show()
+    
+    def process_cnn_lstm_detection(self):
+        """Process frames for CNN+LSTM action recognition"""
+        for cam_num in (1, 2, 3):
+            thread = {1: self.camera_thread_1, 2: self.camera_thread_2, 3: self.camera_thread_3}.get(cam_num)
+            if thread and thread.isRunning() and thread.detection_enabled:
+                frame = thread.get_last_frame()
+                if frame is not None:
+                    pass
 
     def start_cnnlstmshot_timer(self):
         now_str = datetime.datetime.now().strftime("%H:%M:%S")
@@ -697,5 +760,3 @@ class ArnisApp(QMainWindow):
                 ("Camera 3 Logs", self.logs_3),
             ]
         )
-
-
