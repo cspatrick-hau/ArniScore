@@ -11,14 +11,40 @@ def get_model_path(model_name):
 
     return os.path.join(base_path, 'models', model_name)
 
+try:
+    from cnn_lstm import CNNLSTMModel
+    CNN_LSTM_AVAILABLE = True
+except ImportError as e:
+
+    CNN_LSTM_AVAILABLE = False
+    
+    class CNNLSTMModel:
+        def __init__(self, *args, **kwargs):
+            print("CNN+LSTM model")
+        
+        def add_frame(self, frame):
+            pass
+        
+        def predict(self):
+            return "no_action", 0.0
+        
+        def reset_sequence(self):
+            pass
+
 class ArnisStrikeDetector:
     def __init__(self, min_conf=0.5, allowed_labels=None):
         self.yolo_model = YOLO(get_model_path('object_detection.pt'))
         self.convlstm_model_path = get_model_path('convlstm_v3.h5')
-
+        
+        if CNN_LSTM_AVAILABLE:
+            self.cnn_lstm = CNNLSTMModel(self.convlstm_model_path)
+        else:
+            self.cnn_lstm = None
+        
         self.class_names = self.yolo_model.names if hasattr(self.yolo_model, 'names') else {}
         self.min_conf = float(min_conf)
         self.allowed_labels = set(allowed_labels) if allowed_labels else None
+        self.current_roi = None
 
     def detect(self, frame, debug=False):
         rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -45,3 +71,19 @@ class ArnisStrikeDetector:
 
         valid = best_conf >= self.min_conf
         return rgb_frame, valid, best_conf, best_label
+    
+    def detect_action(self, frame, player_bbox):
+        if player_bbox is None or self.cnn_lstm is None:
+            return "no_action", 0.0
+        
+        x1, y1, x2, y2 = player_bbox
+        player_region = frame[int(y1):int(y2), int(x1):int(x2)]
+        
+        if player_region.size == 0:
+            return "no_action", 0.0
+        
+        self.cnn_lstm.add_frame(player_region)
+        
+        action, confidence = self.cnn_lstm.predict()
+        
+        return action, confidence
