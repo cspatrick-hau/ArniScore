@@ -690,21 +690,41 @@ class ArnisApp(QMainWindow):
             scored_by, part = [x.strip() for x in body_part.split("-", 1)]
         else:
             scored_by, part = body_part if isinstance(body_part, tuple) else ("", body_part)
+
         setattr(self, f"pending_event_{cam_number}", (valid, confidence, scored_by, part))
+
         table = {1: self.table_1, 2: self.table_2, 3: self.table_3}[cam_number]
         log_queue = {1: self.log_queue_1, 2: self.log_queue_2, 3: self.log_queue_3}[cam_number]
         logs = {1: self.logs_1, 2: self.logs_2, 3: self.logs_3}[cam_number]
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        log_queue.append((timestamp, valid, confidence, scored_by, part))
+
+        # Log the valid strike
+        log_queue.append((timestamp, "Valid", confidence, scored_by, part))
+
+        # Log the opposing player's strike as Invalid
         if valid and scored_by in ("Red", "Blue"):
             opposing = "Blue" if scored_by == "Red" else "Red"
-            log_queue.append((timestamp, False, 0.0, opposing, part))
+            thread = {1: self.camera_thread_1, 2: self.camera_thread_2, 3: self.camera_thread_3}[cam_number]
+            if thread and thread.isRunning():
+                frame = thread.get_last_frame()
+                if frame is not None:
+                    blue_conf, red_conf = self.predictions[cam_number].get_player_confidences(frame)
+                    opposing_confidence = blue_conf * 100.0 if scored_by == "Red" else red_conf * 100.0
+                else:
+                    opposing_confidence = 0.0
+            else:
+                opposing_confidence = 0.0
+            log_queue.append((timestamp, "Invalid", opposing_confidence, opposing, part))
+
         for log_entry in log_queue:
             logs.append(log_entry)
             row = table.rowCount()
             table.insertRow(row)
             for i, val in enumerate(log_entry):
-                table.setItem(row, i, QTableWidgetItem(str(val)))
+                if i == 1:
+                    table.setItem(row, i, QTableWidgetItem("Valid" if val == "Valid" else "Invalid"))
+                else:
+                    table.setItem(row, i, QTableWidgetItem(str(val)))
         table.scrollToBottom()
         log_queue.clear()
         self.scores[cam_number]["Blue"] = self.predictions[cam_number].scores["Blue"]
