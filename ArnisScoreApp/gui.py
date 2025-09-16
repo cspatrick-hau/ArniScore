@@ -3,7 +3,7 @@ from PyQt5.QtWidgets import (
     QTableWidget, QTableWidgetItem, QComboBox, QApplication, QProgressBar
 )
 from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal
-from PyQt5.QtGui import QImage, QPixmap
+from PyQt5.QtGui import QImage, QPixmap, QPainter, QColor, QFont
 from camera import CameraThread, list_cameras
 from detection import ArnisStrikeDetector
 from utils import export_to_csv, export_to_pdf
@@ -682,32 +682,43 @@ class ArnisApp(QMainWindow):
             h, w, ch = frame.shape
             bytes_per_line = ch * w
             rgb_image = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
-            lbl.setPixmap(QPixmap.fromImage(rgb_image))
+            pixmap = QPixmap.fromImage(rgb_image)
 
+            # Get FPS from the camera thread
+            thread = {1: self.camera_thread_1, 2: self.camera_thread_2, 3: self.camera_thread_3}.get(cam_number)
+            fps = getattr(thread, 'fps', 0)
+
+            # Draw FPS on the pixmap
+            painter = QPainter(pixmap)
+            painter.setPen(QColor(255, 0, 0))  # Red color for FPS text
+            painter.setFont(QFont('Arial', 12))
+            painter.drawText(10, 20, f"FPS: {fps:.1f}")
+            painter.end()
+
+            lbl.setPixmap(pixmap)
     # ---------------- Logs ----------------
     def update_log(self, valid, confidence, body_part, cam_number):
         if isinstance(body_part, str) and "-" in body_part:
             scored_by, part = [x.strip() for x in body_part.split("-", 1)]
         else:
             scored_by, part = body_part if isinstance(body_part, tuple) else ("", body_part)
-
         setattr(self, f"pending_event_{cam_number}", (valid, confidence, scored_by, part))
-
         table = {1: self.table_1, 2: self.table_2, 3: self.table_3}[cam_number]
+        log_queue = {1: self.log_queue_1, 2: self.log_queue_2, 3: self.log_queue_3}[cam_number]
         logs = {1: self.logs_1, 2: self.logs_2, 3: self.logs_3}[cam_number]
-
         timestamp = datetime.datetime.now().strftime("%H:%M:%S")
-        log_entry = (timestamp, "Valid" if valid else "Invalid", confidence, scored_by, part)
-
-        logs.append(log_entry)
-
-        row = table.rowCount()
-        table.insertRow(row)
-        for i, val in enumerate(log_entry):
-            table.setItem(row, i, QTableWidgetItem(str(val)))
-
+        log_queue.append((timestamp, valid, confidence, scored_by, part))
+        if valid and scored_by in ("Red", "Blue"):
+            opposing = "Blue" if scored_by == "Red" else "Red"
+            log_queue.append((timestamp, False, confidence, opposing, part))
+        for log_entry in log_queue:
+            logs.append(log_entry)
+            row = table.rowCount()
+            table.insertRow(row)
+            for i, val in enumerate(log_entry):
+                table.setItem(row, i, QTableWidgetItem(str(val)))
         table.scrollToBottom()
-
+        log_queue.clear()
         self.scores[cam_number]["Blue"] = self.predictions[cam_number].scores["Blue"]
         self.scores[cam_number]["Red"] = self.predictions[cam_number].scores["Red"]
         self.update_scores(cam_number)
