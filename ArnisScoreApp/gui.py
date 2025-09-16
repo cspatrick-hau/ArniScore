@@ -145,7 +145,7 @@ class Prediction:
         self.scores = {"Blue": 0, "Red": 0}
         self.winner = None
         self.last_hit = None
-        self.confidence_threshold = 0.6
+        self.confidence_threshold = 0.7
         self.log_callback = log_callback
         from detection import ArnisStrikeDetector
         self.detector = ArnisStrikeDetector()
@@ -772,3 +772,4 @@ class ArnisApp(QMainWindow):
                 ("Camera 3 Logs", self.logs_3),
             ]
         )
+
