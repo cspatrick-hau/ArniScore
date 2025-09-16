@@ -1,6 +1,7 @@
 from PyQt5.QtCore import QThread, pyqtSignal, QMutex, QMutexLocker, Qt, pyqtSlot
 import cv2
 import numpy as np
+import datetime
 
 def list_cameras(max_devices=10):
     available = []
@@ -9,7 +10,7 @@ def list_cameras(max_devices=10):
         cv2.CAP_MSMF,
         cv2.CAP_ANY
     ]
-    
+
     for i in range(max_devices):
         for backend in backends:
             try:
@@ -23,7 +24,7 @@ def list_cameras(max_devices=10):
                     cap.release()
             except:
                 continue
-                
+
     return available if available else [0]
 
 class CameraThread(QThread):
@@ -41,15 +42,18 @@ class CameraThread(QThread):
         self.camera_number = camera_number
         self.mutex = QMutex()
         self.last_frame = None
+        self.fps = 0
+        self.frame_count = 0
+        self.last_time = datetime.datetime.now()
 
     def run(self):
         self.mutex.lock()
         self.running = True
         self.mutex.unlock()
-        
+
         backends = [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]
         cap = None
-        
+
         for backend in backends:
             try:
                 cap = cv2.VideoCapture(self.camera_index, backend)
@@ -57,30 +61,38 @@ class CameraThread(QThread):
                     break
             except:
                 continue
-        
+
         if not cap or not cap.isOpened():
             print(f"Failed to open camera {self.camera_index}")
             return
-            
+
         try:
             while self.is_running():
                 ret, frame = cap.read()
                 if not ret:
                     print("Failed to read frame")
                     break
-                    
+
                 with QMutexLocker(self.mutex):
                     self.last_frame = frame.copy()
-                    
+
+                self.frame_count += 1
+                now = datetime.datetime.now()
+                elapsed = (now - self.last_time).total_seconds()
+                if elapsed >= 1.0:  # Update FPS every second
+                    self.fps = self.frame_count / elapsed
+                    self.frame_count = 0
+                    self.last_time = now
+
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                
+
                 if self.detection_enabled and self.use_prediction and self.prediction:
                     try:
                         processed_frame = self.prediction.process_frame(frame, self.camera_number)
                         rgb_frame = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
                     except Exception as e:
                         print(f"Prediction error: {e}")
-                        
+
                 self.frame_signal.emit(rgb_frame)
         finally:
             if cap:
