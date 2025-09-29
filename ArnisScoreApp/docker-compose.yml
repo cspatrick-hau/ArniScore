@@ -1,0 +1,13 @@
+version: "3.9"
+
+services:
+  gui-app:
+    build: .
+    container_name: gui-app
+    ports:
+      - "6080:6080"   # noVNC (browser access)
+      - "5900:5900"   # VNC (optional, if you want to use a VNC viewer)
+    volumes:
+      - .:/app        # so changes in your code update inside container
+    environment:
+      - DISPLAY=:0
